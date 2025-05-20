@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenType {
     // Single-character tokens
     LeftParen,
@@ -9,6 +9,7 @@ pub enum TokenType {
     Dot,
     Minus,
     Plus,
+    Colon,
     Semicolon,
     Slash,
     Star,
@@ -22,11 +23,12 @@ pub enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
+    
 
     // Literals
-    Identifier,
-    String,
-    Number,
+    Identifier(String),
+    String(String),
+    Number(i64),
 
     // Types
     Int,
