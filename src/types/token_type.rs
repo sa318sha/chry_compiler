@@ -15,6 +15,7 @@ pub enum TokenType {
     Star,
 
     // One or two character tokens
+    Arrow,
     Bang,
     BangEqual,
     Equal,
@@ -23,18 +24,20 @@ pub enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
-    
 
-    // Literals
-    Identifier(String),
-    String(String),
-    Number(i64),
+    Identifier,
+    // String,
+    // Number,
 
     // Types
-    Int,
-    Float,
-    Double,
-    Bool,
+    // LITERALS -> actual values
+    StringLiteral,
+    IntLiteral,
+    FloatLiteral,
+    // DoubleLiteral,
+    // Float,
+    // Double,
+    BoolLiteral,
 
     // Keywords
     And,
@@ -55,5 +58,10 @@ pub enum TokenType {
     While,
     Break,
 
+    //these are actual hardcoded types
+    Int,
+    Float,
+    Bool,
+    // String,
     Eof,
 }

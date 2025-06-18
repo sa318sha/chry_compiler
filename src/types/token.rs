@@ -1,19 +1,26 @@
-use crate::token_type::TokenType;
+use crate::types::literal::Literal;
+use crate::types::token_type::TokenType;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub line: u32,
     pub tokentype: TokenType,
     pub lexeme: String,
-    // length: usize,
+    pub literal: Option<Literal>, // length: usize,
 }
 
 impl Token {
-    pub fn new(_line: u32, _tokentype: TokenType, _lexeme: String) -> Self {
+    pub fn new(
+        _line: u32,
+        _tokentype: TokenType,
+        _lexeme: String,
+        literal: Option<Literal>,
+    ) -> Self {
         return Token {
             line: _line,
             tokentype: _tokentype,
             lexeme: _lexeme,
+            literal: literal,
             // length: _length,
         };
     }

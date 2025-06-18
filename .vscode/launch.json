@@ -8,15 +8,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'rustScanner'",
+            "name": "Debug executable 'chry_compiler'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=rustScanner",
-                    "--package=rustScanner"
+                    "--bin=chry_compiler",
+                    "--package=chry_compiler"
                 ],
                 "filter": {
-                    "name": "rustScanner",
+                    "name": "chry_compiler",
                     "kind": "bin"
                 }
             },
@@ -26,16 +26,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'rustScanner'",
+            "name": "Debug unit tests in executable 'chry_compiler'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=rustScanner",
-                    "--package=rustScanner"
+                    "--bin=chry_compiler",
+                    "--package=chry_compiler"
                 ],
                 "filter": {
-                    "name": "rustScanner",
+                    "name": "chry_compiler",
                     "kind": "bin"
                 }
             },

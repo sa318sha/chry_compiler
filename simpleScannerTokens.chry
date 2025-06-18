@@ -1,7 +1,8 @@
-fun abc(a, b) {
-    return 5*38*3;
+fun a(): int {
+    return 4;
 }
 
-fun main () {
-    var a = abc(12,13);
+
+fun main() {
+    a();
 }

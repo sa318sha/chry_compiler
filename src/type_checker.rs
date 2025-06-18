@@ -1,3 +1,0 @@
-// use struct
-
-// pub fn ()

@@ -1,8 +1,7 @@
-use crate::token::Token;
-use crate::token_type::TokenType;
+use crate::types::{literal::Literal, token::Token, token_type::TokenType};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::mem;
+// use std::mem;
 
 static TOKEN_MAP: Lazy<HashMap<&'static str, TokenType>> = Lazy::new(|| {
     let mut keywords = HashMap::new();
@@ -20,13 +19,19 @@ static TOKEN_MAP: Lazy<HashMap<&'static str, TokenType>> = Lazy::new(|| {
     keywords.insert("var", TokenType::Var);
     keywords.insert("while", TokenType::While);
     keywords.insert("break", TokenType::Break);
+
     keywords.insert("int", TokenType::Int);
     keywords.insert("float", TokenType::Float);
-    keywords.insert("double", TokenType::Double);
+    // keywords.insert("double", TokenType::Double);
     keywords.insert("bool", TokenType::Bool);
 
     return keywords;
 });
+
+pub fn scan(source: &str) -> Vec<Token> {
+    let mut scanner = Scanner::new(source);
+    scanner.scan_tokens()
+}
 
 #[derive(Debug)]
 pub struct Scanner {
@@ -73,33 +78,49 @@ impl Scanner {
         while self.peek().is_ascii_digit() {
             self.advance();
         }
-
+        let mut is_double = false;
         if self.peek() == '.' && self.peek_next().is_ascii_digit() {
+            is_double = true;
             // Consume the "."
             self.advance();
             while self.peek().is_ascii_digit() {
                 self.advance();
             }
         }
+
         let text: &str = &self.source[self.start..self.current];
 
-        match text.parse::<i32>() {
-            Ok(n) => self.add_token(TokenType::Number(n.into())),
-            Err(e) => println!("Failed to parse: {}", e),
+        if (is_double) {
+            match text.parse::<f64>() {
+                Ok(n) => self.add_token_literal(TokenType::FloatLiteral, Some(Literal::Float(n))),
+                Err(e) => println!("Failed to parse: {}", e),
+            }
+        } else {
+            match text.parse::<i32>() {
+                Ok(n) => self.add_token_literal(TokenType::IntLiteral, Some(Literal::Int(n))),
+                Err(e) => println!("Failed to parse: {}", e),
+            }
         }
-
         // let text: &str = &self.source[self.start..self.current];
     }
     fn identifier(&mut self) {
-        while self.peek().is_alphanumeric() {
+        while {
+            let c = self.peek();
+            c.is_alphanumeric() || c == '_'
+        } {
             self.advance();
         }
         let text: &str = &self.source[self.start..self.current];
 
         let t = TOKEN_MAP.get(text);
         match t {
-            None => self.add_token(TokenType::Identifier(String::from(text))),
-            Some(token) => self.add_token(token.clone()),
+            None => self.add_token(TokenType::Identifier),
+            Some(token) => match token {
+                TokenType::True => self.add_token_literal(token.clone(), Some(Literal::Bool(true))),
+                TokenType::False => self.add_token_literal(token.clone(), Some(Literal::Bool(false))),
+
+                _ => self.add_token(token.clone()),
+            },
         }
     }
     fn match_char(&mut self, c: char) -> bool {
@@ -132,7 +153,10 @@ impl Scanner {
     }
 
     fn peek_next(&mut self) -> char {
-        return '\0';
+        if self.current + 1 >= self.source.len() {
+            return '\0';
+        }
+        return self.source.chars().nth(self.current + 1).unwrap();
     }
 
     fn scan_token(&mut self) {
@@ -146,7 +170,13 @@ impl Scanner {
             '}' => self.add_token(TokenType::RightBrace),
             ',' => self.add_token(TokenType::Comma),
             '.' => self.add_token(TokenType::Dot),
-            '-' => self.add_token(TokenType::Minus),
+            '-' => {
+                if self.match_char('>') {
+                    self.add_token(TokenType::Arrow);
+                } else {
+                    self.add_token(TokenType::Minus);
+                }
+            }
             '+' => self.add_token(TokenType::Plus),
             ';' => self.add_token(TokenType::Semicolon),
             '*' => self.add_token(TokenType::Star),
@@ -237,7 +267,10 @@ impl Scanner {
         // Trim the surrounding quotes.
         let text: &str = &self.source[self.start + 1..self.current - 1];
 
-        self.add_token(TokenType::String(String::from(text)));
+        self.add_token_literal(
+            TokenType::StringLiteral,
+            Some(Literal::String(String::from(text))),
+        );
     }
 
     pub fn scan_tokens(&mut self) -> Vec<Token> {
@@ -246,15 +279,23 @@ impl Scanner {
             self.scan_token();
         }
 
+        self.start = self.current; // hard coded to move the start the end condition on EOF
         self.add_token(TokenType::Eof);
 
         return self.tokens.clone();
     }
 
+    fn add_token_literal(&mut self, token: TokenType, literal: Option<Literal>) {
+        let text: &str = &self.source[self.start..self.current];
+        let t = Token::new(self.line, token, String::from(text), literal);
+
+        self.tokens.push(t);
+    }
+
     fn add_token(&mut self, token: TokenType) {
         // self.add_token_literal(token, null);
         let text: &str = &self.source[self.start..self.current];
-        let t = Token::new(self.line, token, String::from(text));
+        let t = Token::new(self.line, token, text.to_string(), None);
 
         self.tokens.push(t);
     }
