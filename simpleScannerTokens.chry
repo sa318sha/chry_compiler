@@ -1,8 +1,42 @@
-fun a(): int {
-    return 4;
+
+
+fun a () {
+
+    var b: int = 12;
+    while(true ) {
+        b = 42+17;
+    }
+    var a: int = 12+b;
+    return;
 }
 
-
-fun main() {
+/*
+fun c() {
+    var b: int = 12;
+    while(true) {
+        b = 42+17;
+    }
     a();
+    return;
 }
+
+*/
+/*
+fun d() {
+    var a = 1;
+    a = a + 1;
+}
+*/
+
+
+/*
+fun b() {
+    if (true) {
+        var c: int = 12;
+    }
+    else {
+        var c:int = 14;
+    }
+}
+
+*/

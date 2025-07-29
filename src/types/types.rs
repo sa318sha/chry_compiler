@@ -38,7 +38,23 @@ impl Type {
             (Type::Float, Type::Int) => Type::Float,
             (Type::Int, Type::Float) => Type::Float,
             (Type::Int, Type::Int) => Type::Int,
-            _ => { panic!("unsupported typechecking")}
+            _ => {
+                panic!("unsupported typechecking")
+            }
         }
+    }
+}
+
+pub fn pretty_print_type(ty: &Type) -> String {
+    match ty {
+        Type::Int => "int".to_string(),
+        Type::Float => "float".to_string(),
+        Type::Bool => "bool".to_string(),
+        Type::Void => "void".to_string(),
+        Type::Nil => todo!(),
+        Type::String => todo!(),
+        Type::Function(_, items, _) => todo!(),
+        Type::Struct { name, fields } => todo!(),
+        Type::Enum { name, variants } => todo!(),
     }
 }

@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6c787b1e3d3d6c5cdfbe52ef33ccf73370639cd569574cbab12689fa3ab15771 # shrinks to stmt = Variable(Token { line: 0, tokentype: Identifier, lexeme: "t0", literal: None }, Int, Some(TypedExpr { kind: Unary(Token { line: 0, tokentype: Identifier, lexeme: "t0", literal: None }, TypedExpr { kind: Literal(Int(0)), ty: Int }), ty: Int }))
+cc afbed0fd781b4c298d97586fb2fa29baa48d8f9ba8ee00e1cdce5db425240ecc # shrinks to prog = [Function(Token { line: 0, tokentype: Identifier, lexeme: "main", literal: None }, [], [Variable(Token { line: 0, tokentype: Identifier, lexeme: "t0", literal: None }, Int, Some(TypedExpr { kind: Unary(Token { line: 0, tokentype: Identifier, lexeme: "t0", literal: None }, TypedExpr { kind: Literal(Int(0)), ty: Int }), ty: Int }))], Void)]

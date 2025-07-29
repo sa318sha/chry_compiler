@@ -1,24 +1,13 @@
 use std::fmt::format;
 
-// use crate::error::error::ParseError;
-// use crate::error::error::ParseError;
-use crate::types::types::Type;
-// use crate::error::ParseResult;
 use crate::types::expr::Expr;
 use crate::types::literal::Literal;
-// use crate::Literal;
 use crate::types::stmt::Stmt;
+use crate::types::types::Type;
 
+use super::parse_error::ParseError;
 use crate::types::token::Token;
 use crate::types::token_type::TokenType;
-
-#[derive(Debug)]
-pub enum ParseError {
-    NotFound,
-    InvalidInput,
-    ErrorMsg(String),
-    ParseToken(Token, String),
-}
 
 type ParseResult<T> = Result<T, ParseError>;
 
@@ -26,9 +15,9 @@ type ParseResult<T> = Result<T, ParseError>;
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
-    loop_depth: usize,
+    // loop_depth: usize,
     stmts: Vec<Stmt>,
-    errors: Vec<ParseError>,
+    pub errors: Vec<ParseError>,
 }
 
 impl Parser {
@@ -36,7 +25,7 @@ impl Parser {
         return Parser {
             tokens: _tokens,
             current: 0,
-            loop_depth: 0,
+            // loop_depth: 0,
             stmts: Vec::new(),
             errors: Vec::new(),
         };
@@ -44,31 +33,23 @@ impl Parser {
 
     pub fn report_errors(&self) {
         if !self.errors.is_empty() {
-            eprintln!("Type checking found {} errors.", self.errors.len());
+            eprintln!("Parser found {} errors.", self.errors.len());
             for err in &self.errors {
-                eprintln!("{:?}", err); // Or implement Display for nicer messages
+                let msg = err.to_string_message();
+                println!("{}", msg); // Or implement Display for nicer messages
             }
         }
     }
 
     pub fn parse(&mut self) -> Vec<Stmt> {
-        // let mut stmts: Vec<Stmt> = Vec::new();
-
         while !self.is_at_end() {
             if let Some(stmt) = self.parse_single_stmt() {
                 self.stmts.push(stmt);
             }
-            // let stmt = self.parsed_stmts();
-            // self.stmts.push(stmt);
         }
         self.report_errors();
-        // let expr = self.statements();
-        // for stmt in &stmts {
-        //     self.pretty_print_ast(&stmt, 0);
-        // }
 
         return self.stmts.clone();
-        // return Err(ParseError::InvalidInput);
     }
 
     pub fn print_parser(&self) {
@@ -81,34 +62,23 @@ impl Parser {
         return self.declaration();
     }
 
-    pub fn parse_test(&mut self) -> Vec<Stmt> {
-        // let mut stmts: Vec<Stmt> = Vec::new();
+    // pub fn parse_test(&mut self) -> Vec<Stmt> {
+    //     while !self.is_at_end() {
+    //         if let Some(stmt) = self.parse_single_stmt() {
+    //             self.stmts.push(stmt);
+    //         }
+    //     }
 
-        while !self.is_at_end() {
-            if let Some(stmt) = self.parse_single_stmt() {
-                self.stmts.push(stmt);
-            }
-        }
-        // let expr = self.statements();
-        // for stmt in &stmts {
-        //     self.pretty_print_ast(&stmt, 0);
-        // }
-
-        return self.stmts.clone();
-    }
+    //     return self.stmts.clone();
+    // }
 
     fn pretty_print_ast(&self, stmt: &Stmt, depth: usize) -> () {
         match stmt {
-            // Stmt::Error => {
-            //     println!("Error Statement")
-            // }
-
             Stmt::Block(block_stmts) => {
                 println!("{}{:?}", "  ".repeat(depth), "Block Statement");
                 for block_stmt in block_stmts.as_ref() {
                     self.pretty_print_ast(block_stmt, depth + 1);
                 }
-                // self.pretty_print_ast(stmts, depth);
             }
             Stmt::Variable(token, variable_type, expr) => {
                 match variable_type.as_ref() {
@@ -119,7 +89,6 @@ impl Parser {
                     Some(x) => self.pretty_print_expr(x, depth + 1),
                     _ => {}
                 }
-                // self.pretty_print_expr(expr.as_ref(), depth + 1);
             }
             Stmt::Print(expr) => {}
             Stmt::Expression(expr) => {
@@ -198,7 +167,7 @@ impl Parser {
                 self.pretty_print_expr(rhs.as_ref(), depth + 1);
             }
             Expr::Call(callee, token, args) => {
-                println!("{}Call: ", "  ".repeat(depth));
+                println!("{} Call: ", "  ".repeat(depth));
                 self.pretty_print_expr(&callee.as_ref(), depth + 1);
                 for arg in args.as_ref() {
                     self.pretty_print_expr(arg, depth + 1);
@@ -231,15 +200,7 @@ impl Parser {
                 return Some(expr);
             }
             Err(parse_error) => {
-                match parse_error {
-                    ParseError::ParseToken(token, str) => {
-                        println!(
-                            "line: {}, characters: {}, error msg: {}",
-                            token.line, token.lexeme, str
-                        )
-                    }
-                    _ => {}
-                }
+                self.errors.push(parse_error);
                 self.synchronize();
                 return None;
             }
@@ -299,10 +260,10 @@ impl Parser {
                 self.advance();
                 return self.if_statement();
             }
-            // TokenType::Print => {
-            //     self.advance();
-            //     return self.print_statement();
-            // }
+            TokenType::Print => {
+                self.advance();
+                return self.print_statement();
+            }
             TokenType::LeftBrace => {
                 self.advance();
                 return Ok(Stmt::Block(Box::new(self.block()?)));
@@ -316,27 +277,27 @@ impl Parser {
 
     fn parse_type(&mut self) -> ParseResult<Type> {
         match self.advance().tokentype {
+            TokenType::Void => Ok(Type::Void),
             TokenType::Int => Ok(Type::Int),
             TokenType::Float => Ok(Type::Float),
             TokenType::Bool => Ok(Type::Bool),
-            TokenType::Identifier => Err(ParseError::ParseToken(
-                self.previous().clone(),
-                "custom types are not allowed".to_string(),
-            )),
-            // TokenType::Identifier => {
-            //     // Could be a user-defined type
-            //     let name = self.previous().lexeme.clone();
-            //     // Ok(Type::Custom(name))
-            // }
-            _ => Err(ParseError::ParseToken(
-                self.previous().clone(),
-                format!(
+            TokenType::Identifier => Err(ParseError::UnexpectedToken {
+                token: self.previous().clone(),
+                expected: vec![
+                    TokenType::Void,
+                    TokenType::Float,
+                    TokenType::Int,
+                    TokenType::Bool,
+                ],
+                message: Some("internal error, custom types are not allowed".to_string()),
+            }),
+            _ => Err(ParseError::InvalidType {
+                token: self.previous().clone(),
+                reason: (format!(
                     "{:?}, is an invalid type",
                     self.previous().clone().get_token_type()
-                ),
-            )), // _ => Err(ParseError::ErrorMsg(
-                //     "invalid/not supported type use".to_string(),
-                // )),
+                )),
+            }),
         }
     }
 
@@ -346,20 +307,7 @@ impl Parser {
 
         let mut var_type: Option<Type> = None;
         if self.match_tokens(&[TokenType::Colon]) {
-            // let i = self.expression()?;
-            // if (self.match_tokens(&[
-            //     TokenType::Int,
-            //     TokenType::Float,
-            //     // TokenType::Double,
-            //     TokenType::Bool,
-            // ])) {
             var_type = Some(self.parse_type()?);
-            // } else {
-            //     return Err(ParseError::ParseToken(
-            //         self.peek().clone(),
-            //         String::from("expected type specifier after ;"),
-            //     ));
-            // }
         }
 
         if (self.match_tokens(&[TokenType::Equal])) {
@@ -367,6 +315,16 @@ impl Parser {
         }
 
         self.consume(TokenType::Semicolon, "Expected ;")?;
+
+        if var_type == None && initializer == None {
+            return Err(ParseError::InvalidVariableDeclaration {
+                token: identifier.clone(),
+                message: format!(
+                    "{} needs either initializer or type declaration",
+                    identifier.lexeme
+                ),
+            });
+        }
 
         return Ok(Stmt::Variable(identifier, var_type, initializer));
     }
@@ -378,14 +336,11 @@ impl Parser {
 
         let mut param_list: Vec<(Token, Type)> = Vec::new();
         // if self.match_tokens(&[TokenType::Colon]) {
-        //     var_type = Some(self.parse_type()?);
-        // }
         while (!self.is_at_end() && !self.check(&TokenType::RightParen)) {
             let identifier = self
                 .consume_identifier("Expected parameter in function signature")?
                 .clone();
 
-            // todo -> change to inferred types
             self.consume(
                 TokenType::Colon,
                 &format!(
@@ -442,8 +397,10 @@ impl Parser {
 
         return Ok(Stmt::Class(name, Box::new(methods)));
     }
-    fn print_statement(&self) -> ParseResult<Stmt> {
-        return Err(ParseError::InvalidInput);
+    fn print_statement(&mut self) -> ParseResult<Stmt> {
+        let val = self.expression()?;
+        self.consume(TokenType::Semicolon, "expected ; after value")?;
+        return Ok(Stmt::Print(Box::new(val)));
     }
     fn if_statement(&mut self) -> ParseResult<Stmt> {
         self.consume(TokenType::LeftParen, "expected (")?;
@@ -473,7 +430,7 @@ impl Parser {
 
         self.consume(TokenType::RightParen, "expected )")?;
 
-        self.consume(TokenType::LeftBrace, "expected {")?;
+        // self.consume(TokenType::LeftBrace, "expected {")?;
 
         let block = self.statements()?;
 
@@ -530,12 +487,12 @@ impl Parser {
         return Ok(body);
     }
     fn break_statement(&mut self) -> ParseResult<Stmt> {
-        if (self.loop_depth == 0) {
-            return Err(ParseError::ParseToken(
-                self.previous().clone(),
-                String::from("invalid use of break"),
-            ));
-        }
+        // if (self.loop_depth == 0) {
+        //     return Err(ParseError::ParseToken(
+        //         self.previous().clone(),
+        //         String::from("invalid use of break"),
+        //     ));
+        // }
         self.consume(TokenType::Semicolon, "Expected ; after break")?;
 
         return Ok(Stmt::Break(self.previous().clone()));
@@ -555,11 +512,20 @@ impl Parser {
     }
 
     fn block(&mut self) -> ParseResult<Vec<Stmt>> {
+        let prev = self.previous().clone();
         let mut statements: Vec<Stmt> = Vec::new();
         while !self.check(&TokenType::RightBrace) && !self.is_at_end() {
             statements.push(self.declaration()?);
         }
-        self.consume(TokenType::RightBrace, "Expect '}' after block.")?;
+        if self.check(&TokenType::RightBrace) {
+            self.advance();
+            return Ok(statements);
+        } else {
+            return Err(ParseError::UnterminatedBlock {
+                start: prev,
+                end: self.peek().clone(),
+            });
+        }
         return Ok(statements);
     }
 
@@ -581,7 +547,19 @@ impl Parser {
             let token = self.previous().clone();
             let rhs = self.assignment()?;
 
-            expr = Expr::Binary(Box::new(expr), token, Box::new(rhs));
+            match expr {
+                Expr::Variable(token) => {
+                    return Ok(Expr::Assign(token, Box::new(rhs)));
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedToken {
+                        token: token,
+                        expected: vec![TokenType::Equal],
+                        message: Some(format!("not a valid assignment expression")),
+                    });
+                }
+            }
+            // expr = Expr::Binary(Box::new(expr), token, Box::new(rhs));
         }
 
         return Ok(expr);
@@ -593,7 +571,7 @@ impl Parser {
         while self.match_tokens(&[TokenType::Or]) {
             let token = self.previous().clone();
             let rhs: Expr = self.and()?;
-            expr = Expr::Binary(Box::new(expr), token, Box::new(rhs));
+            expr = Expr::Logical(Box::new(expr), token, Box::new(rhs));
         }
         return Ok(expr);
     }
@@ -604,7 +582,7 @@ impl Parser {
         while self.match_tokens(&[TokenType::And]) {
             let token = self.previous().clone();
             let rhs: Expr = self.equality()?;
-            expr = Expr::Binary(Box::new(expr), token, Box::new(rhs));
+            expr = Expr::Logical(Box::new(expr), token, Box::new(rhs));
         }
         return Ok(expr);
     }
@@ -684,6 +662,7 @@ impl Parser {
     }
 
     fn finish_call(&mut self, callee: Expr) -> ParseResult<Expr> {
+        // if let Expr::Variable(t) = callee {
         let mut arg_list: Vec<Expr> = Vec::new();
 
         while !self.is_at_end() && !self.check(&TokenType::RightParen) {
@@ -707,6 +686,9 @@ impl Parser {
             right_paren,
             Box::new(arg_list),
         ));
+        // } else {
+        //     // return Err(ParseError { token: (), reason: () });
+        // }
     }
 
     fn primary(&mut self) -> ParseResult<Expr> {
@@ -722,36 +704,21 @@ impl Parser {
             | TokenType::IntLiteral
             | TokenType::FloatLiteral
             | TokenType::StringLiteral => {
-                let l = t.literal.clone().ok_or_else(|| {
-                    ParseError::ParseToken(
-                        t.clone(),
-                        String::from("Expected literal value for 'false'"),
-                    )
-                })?;
+                let l = t
+                    .literal
+                    .clone()
+                    .ok_or_else(|| ParseError::InvalidLiteral {
+                        token: t.clone(),
+                        reason: String::from(format!(
+                            "Expected literal value for {:?} got None instead",
+                            t.tokentype
+                        )),
+                    })?;
 
                 self.advance();
                 // if let Some(l) = t.literal {}
                 return Ok(Expr::Literal(l));
             }
-            // TokenType::False => {
-            //     self.advance();
-            //     if let Some(l) = t.literal {}
-            //     return Ok(Expr::Literal(t.literal));
-            // }
-            // TokenType::True => {
-            //     self.advance();
-            //     return Ok(Expr::Literal(Literal::Bool(true)));
-            // }
-            // // TokenType::
-            // TokenType::IntLiteral => {
-            //     self.advance();
-            //     return Ok(Expr::Literal(Literal::Int(t.literal)));
-            // }
-
-            // TokenType::StringLiteral => {
-            //     self.advance();
-            //     return Ok(Expr::Literal(Lit::String(string.clone())));
-            // }
             TokenType::LeftParen => {
                 self.advance(); // consume '('
                 let expr = self.expression()?;
@@ -760,10 +727,19 @@ impl Parser {
             }
             _ => {
                 // println!("Unexpected token in primary: {:?}", t);
-                return Err(ParseError::ParseToken(
-                    self.peek().clone(),
-                    String::from("Unexpected token"),
-                ));
+                return Err(ParseError::UnexpectedToken {
+                    token: self.peek().clone(),
+                    expected: vec![
+                        TokenType::False,
+                        TokenType::Identifier,
+                        TokenType::True,
+                        TokenType::IntLiteral,
+                        TokenType::StringLiteral,
+                        TokenType::LeftParen,
+                        TokenType::True,
+                    ],
+                    message: Some(String::from("Unexpected token")),
+                });
             }
         }
     }
@@ -837,14 +813,23 @@ impl Parser {
         return self.previous();
     }
 
-    fn consume(&mut self, token: TokenType, msg: &str) -> ParseResult<&Token> {
+    fn consume(&mut self, token: TokenType, message: &str) -> ParseResult<&Token> {
         if self.check(&token) {
             return Ok(self.advance());
         }
-        return Err(ParseError::ParseToken(
-            self.peek().clone(),
-            String::from(msg),
-        ));
+
+        if self.is_at_end() {
+            return Err(ParseError::UnexpectedEof {
+                token: self.peek().clone(),
+                expected: vec![token],
+            });
+        }
+
+        Err(ParseError::UnexpectedToken {
+            token: self.peek().clone(),
+            expected: vec![token],
+            message: Some(message.to_string()),
+        })
     }
 
     // fn consume_type(&mut self, )
@@ -860,7 +845,10 @@ impl Parser {
         if self.check_identifier() {
             return Ok(self.advance());
         }
-        return Err(ParseError::ParseToken(self.peek().clone(), String::from(s)));
+        return Err(ParseError::InvalidType {
+            token: self.peek().clone(),
+            reason: String::from(s),
+        });
     }
 
     fn check_identifier(&self) -> bool {
@@ -886,25 +874,3 @@ impl Parser {
         // }
     }
 }
-
-// === Unit-level tests (optional, for focused logic) ===
-
-// #[test]
-// fn test_parse_type_int() {
-//     let tokens = scan("int");
-//     let mut parser = Parser::new(tokens);
-//     parser.advance(); // simulate consuming int
-//     let t = parser.parse_type().unwrap();
-//     assert_eq!(t, Type::Int);
-// }
-
-// #[test]
-// fn test_parse_type_invalid() {
-//     let tokens = scan("unknown");
-//     let mut parser = Parser::new(tokens);
-//     parser.advance(); // simulate consuming unknown
-//     let result = std::panic::catch_unwind(|| {
-//         parser.parse_type().unwrap();
-//     });
-//     assert!(result.is_err(), "Expected panic or error for invalid type");
-// }

@@ -45,7 +45,7 @@ impl SymbolTable {
                     current.insert(name.to_string(), Some(ty));
                 }
                 return Err(format!(
-                    "Variable '{}' already declared in this scope",
+                    "Variable '{}' already defined in this scope",
                     name
                 ));
             }

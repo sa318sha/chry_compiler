@@ -1,31 +1,73 @@
-use crate::parser::parser::ParseError;
+use super::parse_error::ParseError;
 use crate::parser::parser::Parser;
-use crate::scanner::scanner::scan;
+use crate::scanner::scanner::Scanner;
 use crate::types::expr::Expr;
 use crate::types::literal::Literal;
 use crate::types::stmt::Stmt;
-use crate::types::token::Token;
 use crate::types::token_type::TokenType;
 use crate::types::types::Type;
 
 // Helper to run parser
 fn parse_ok(source: &str) -> Vec<Stmt> {
-    let tokens = scan(source);
+    let tokens = Scanner::new(source).scan_tokens();
     let mut parser = Parser::new(tokens);
-    parser.parse_test()
+    parser.parse()
 }
 
 fn parse_err(source: &str) -> ParseError {
-    let tokens = scan(source);
+    let tokens = Scanner::new(source).scan_tokens();
     let mut parser = Parser::new(tokens);
-    let res = parse_ok(source);
-    match parser.parse_stmt_result() {
-        Ok(_) => panic!("Expected parse error, but parsing succeeded."),
-        Err(e) => e,
-    }
+    let _ = parser.parse(); // run the test parse
+
+    parser.errors.first().cloned().expect("Expected error")
 }
 
 // === Integration tests ===
+
+#[test]
+fn test_malformed_expression_1_plus() {
+    let err = parse_err("1 + ;");
+    assert!(matches!(err, ParseError::UnexpectedToken { .. }));
+}
+
+#[test]
+fn test_malformed_expression_a_star() {
+    let err = parse_err("a * ;");
+    assert!(matches!(err, ParseError::UnexpectedToken { .. }));
+}
+
+#[test]
+fn test_dangling_else_associativity() {
+    let stmts = parse_ok("if (true) if (false) var x: int = 0; else var y: int = 1;");
+    assert_eq!(stmts.len(), 1);
+    // Optionally check AST shape if you want to confirm associativity
+}
+
+#[test]
+fn test_call_get_chain() {
+    let stmts = parse_ok("a.b().c().d;");
+    assert_eq!(stmts.len(), 1);
+    // Optionally walk AST and confirm Expr::Get and Expr::Call nesting
+}
+
+#[test]
+fn test_recovery_after_error() {
+    let stmts = parse_ok("var x: int = ; var y: int = 1;");
+    // First var should cause an error, but y should be valid
+    assert!(stmts.iter().any(|s| matches!(s, Stmt::Variable(t, _, _) if t.lexeme == "y")));
+}
+
+#[test]
+fn test_missing_separator_between_decls() {
+    let err = parse_err("var x: int = 1 var y: int = 2;");
+    assert!(matches!(err, ParseError::UnexpectedToken { .. }));
+}
+
+#[test]
+fn test_invalid_for_header() {
+    let err = parse_err("for var x: int = 0; x < 10; x = x + 1) {}");
+    assert!(matches!(err, ParseError::UnexpectedToken { .. }));
+}
 
 #[test]
 fn test_empty_input() {
@@ -47,19 +89,19 @@ fn test_var_decl_with_type_and_init() {
 }
 
 #[test]
-fn improper_fun_decleration_no_type() {
-    //todo -> double check correct error procedure
+fn test_improper_fun_decl_no_type() {
     let err = parse_err("fun a(): { }");
-    if let ParseError::ParseToken(token, _) = err {
-        assert_eq!(token.tokentype, TokenType::LeftBrace);
-    } else {
-        panic!("Expected ParseToken error due to missing semicolon");
+    match err {
+        ParseError::InvalidType { token, .. } => {
+            assert_eq!(token.lexeme, "{");
+        }
+        _ => panic!("Expected InvalidType error due to missing return type."),
     }
 }
 
 #[test]
-fn fun_decleration_int_type() {
-    let stmts = parse_ok("fun a(): int { var a: int = 5;}");
+fn test_fun_decl_with_int_return_type() {
+    let stmts = parse_ok("fun a(): int { var a: int = 5; }");
     assert_eq!(stmts.len(), 1);
     if let Stmt::Function(token, params, body, return_type) = &stmts[0] {
         assert_eq!(token.lexeme, "a");
@@ -67,17 +109,18 @@ fn fun_decleration_int_type() {
         assert!(!body.is_empty());
         assert_eq!(return_type, &Type::Int);
     } else {
-        panic!("Expected variable declaration");
+        panic!("Expected function declaration");
     }
 }
 
 #[test]
 fn test_missing_semicolon() {
     let err = parse_err("var x: int = 42");
-    if let ParseError::ParseToken(token, _) = err {
-        assert_eq!(token.tokentype, TokenType::Eof);
-    } else {
-        panic!("Expected ParseToken error due to missing semicolon");
+    match err {
+        ParseError::UnexpectedEof { token, .. } => {
+            assert_eq!(token.tokentype, TokenType::Eof);
+        }
+        _ => panic!("Expected UnexpectedToken error due to missing semicolon."),
     }
 }
 
@@ -85,16 +128,17 @@ fn test_missing_semicolon() {
 fn test_nested_if_else() {
     let stmts = parse_ok("if (true) if (false) var x: int = 0; else var y: int = 1;");
     assert_eq!(stmts.len(), 1);
-    // Further assertions can dig into AST shape, omitted for brevity
+    // Further AST assertions can be added as needed
 }
 
 #[test]
 fn test_mismatched_braces() {
     let err = parse_err("if (true) { var x: int = 1; ");
-    if let ParseError::ParseToken(_, msg) = err {
-        assert!(msg.contains("Expect '}' after block"));
-    } else {
-        panic!("Expected ParseToken error due to mismatched braces");
+    match err {
+        ParseError::UnterminatedBlock { start, .. } => {
+            assert_eq!(start.tokentype, TokenType::LeftBrace);
+        }
+        _ => panic!("Expected UnterminatedBlock error due to unmatched '{{'"),
     }
 }
 
@@ -115,10 +159,14 @@ fn test_function_no_params() {
 #[test]
 fn test_function_params_no_type() {
     let err = parse_err("fun foo(a,b) { return; }");
-    if let ParseError::ParseToken(_, msg) = err {
-        assert!(msg.contains("Expected Type specifier ':'"));
-    } else {
-        panic!("Expected ParseToken error due to mismatched braces");
+    match err {
+        ParseError::UnexpectedToken { token, .. } => {
+            assert_eq!(token.lexeme, ",");
+        }
+        ParseError::InvalidType { .. } => {
+            // Alternative depending on your parser's flow
+        }
+        _ => panic!("Expected UnexpectedToken or InvalidType for missing param types."),
     }
 }
 
@@ -128,14 +176,10 @@ fn test_function_params_typed() {
     assert_eq!(stmts.len(), 1);
     if let Stmt::Function(token, params, body, ret_type) = &stmts[0] {
         assert_eq!(token.lexeme, "foo");
-        assert!(!params.is_empty());
-        let a = params.as_ref();
-        for val in a {
-            assert_eq!(val.1, Type::Int);
-            let something = val.0.clone();
-            assert_eq!(something.lexeme, "a");
-            assert_eq!(something.literal, None);
-        }
+        assert_eq!(params.len(), 1);
+        let (param_token, param_type) = &params[0];
+        assert_eq!(param_token.lexeme, "a");
+        assert_eq!(param_type, &Type::Int);
         assert_eq!(ret_type, &Type::Void);
         assert!(!body.is_empty());
     } else {
@@ -144,21 +188,14 @@ fn test_function_params_typed() {
 }
 
 #[test]
-fn invalid_function_improper_return() {
+fn test_invalid_function_improper_return() {
     let err = parse_err("fun foo(): { return; }");
-    if let ParseError::ParseToken(token, _) = err {
-        assert_eq!(token.tokentype, TokenType::LeftBrace);
-    } else {
-        panic!("Expected ParseToken error due to missing type");
+    match err {
+        ParseError::InvalidType { token, .. } => {
+            assert_eq!(token.tokentype, TokenType::LeftBrace);
+        }
+        _ => panic!("Expected InvalidType error due to missing return type."),
     }
-    // if let Stmt::Function(token, params, body, ret_type) = &stmts[0] {
-    //     assert_eq!(token.lexeme, "foo");
-    //     assert!(params.is_empty());
-    //     assert!(ret_type.is_none());
-    //     assert!(!body.is_empty());
-    // } else {
-    //     panic!("Expected function declaration");
-    // }
 }
 
 #[test]

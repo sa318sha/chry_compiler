@@ -24,6 +24,10 @@ pub enum TokenType {
     GreaterEqual,
     Less,
     LessEqual,
+    BitWiseOr,
+    BitWiseAnd,
+    And,
+    Or,
 
     Identifier,
     // String,
@@ -40,7 +44,6 @@ pub enum TokenType {
     BoolLiteral,
 
     // Keywords
-    And,
     Class,
     Else,
     False,
@@ -48,7 +51,6 @@ pub enum TokenType {
     For,
     If,
     Nil,
-    Or,
     Print,
     Return,
     Super,
@@ -62,6 +64,7 @@ pub enum TokenType {
     Int,
     Float,
     Bool,
+    Void,
     // String,
     Eof,
 }

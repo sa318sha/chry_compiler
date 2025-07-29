@@ -1,3 +1,4 @@
+use crate::scanner::scanner::TOKEN_MAP;
 use crate::types::literal::Literal;
 use crate::types::token_type::TokenType;
 
@@ -34,5 +35,31 @@ impl Token {
 
     pub fn get_token_type(&self) -> TokenType {
         return self.tokentype.clone();
+    }
+
+    pub fn dummy_with_type(token_type: TokenType) -> Token {
+        return Token::new(1, token_type, "".to_string(), None);
+    }
+
+    pub fn dummy_identifier(name: &str) -> Token {
+        return Token {
+            line: 1,
+            tokentype: TokenType::Identifier,
+            lexeme: name.to_string(),
+            literal: None,
+        };
+    }
+
+    pub fn dummy_keyword(keyword: &str) -> Token {
+        let val = TOKEN_MAP.get(keyword);
+        if let Some(t) = val {
+            return Token {
+                line: 1,
+                tokentype: t.clone(),
+                lexeme: "".to_string(),
+                literal: None,
+            };
+        }
+        panic!("should never reach here cmon champ");
     }
 }
