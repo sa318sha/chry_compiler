@@ -8,12 +8,16 @@ mod parser;
 
 // use chry_compiler::lir::lir::lower_to_lir;
 
+mod lir;
+use crate::lir::live_range_analyis::live_range_analysis;
+
+use crate::lir::live_range_analyis::live_range_multiple_analysis;
+use crate::lir::live_range_analyis::pretty_print_live_ranges;
 use crate::parser::parser::Parser;
 
 mod scanner;
 use crate::scanner::scanner::Scanner;
 
-mod lir;
 mod type_checker;
 // use crate::lir::lir::lower_to_lir;
 use crate::lir::lir::lower_to_lir;
@@ -30,6 +34,9 @@ use crate::hir::hir::HIR;
 
 mod ssa;
 use crate::ssa::ssa::SSAContext;
+
+mod assembly;
+// use crate::assembly::x86_64::lower_to_x86_64;
 
 const SCAN_LEVEL: i32 = 1;
 const PARSE_LEVEL: i32 = 2;
@@ -77,18 +84,31 @@ fn run(source_str: &str) {
 
     let mut hir_lowerer = HIR::new();
     hir_lowerer.lower_typed_asts(&typed_stmts);
+    println!(
+        "HIR PROGRAM**********\n{}",
+        hir_lowerer.pretty_print_program()
+    );
+    // hir_lowerer.pretty_print_program();
 
     let mut ssa_contexts = lower_functions_to_ssa(&hir_lowerer.functions);
 
-    // let mut ssa_programs = Vec::new();
-    // for i in ssa_contexts {
-    //     ssa_programs.push(i.program);
-    // }
-
-    let lir_programs = lower_to_lir(ssa_contexts);
-
-    for lir_program in lir_programs {
-        println!("{}", lir_program);
+    for i in &ssa_contexts {
+        println!("{}", i)
     }
+
+    let mut lir_programs: Vec<lir::lir::LIRProgram> = lower_to_lir(ssa_contexts);
+
+    for i in &lir_programs {
+        println!("{}", i)
+    }
+
+    let mut live_ranges = live_range_multiple_analysis(&lir_programs);
+
+    for i in live_ranges {
+        pretty_print_live_ranges(&i);
+    }
+
+    // lower_to_x86_64(lir_programs, live_ranges);
+
     // let mut x = lower_to_lir(ssa_contexts.iter().map(|f| f.program)::<Vec<_>>())
 }

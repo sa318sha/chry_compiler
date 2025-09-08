@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::format;
 
 use crate::ssa::cfg::CFG;
+use crate::ssa::ssa_version::SSAVersion;
 use crate::types::hir_types::pretty_print_hir_instr;
 use crate::types::literal::Literal;
 use crate::types::ssa_types::{
@@ -56,7 +57,7 @@ impl BlockBuilder {
                         .or_default()
                         .push(from.clone());
                 }
-                Terminator::Return(_) => {
+                Terminator::Return(_, _) => {
                     // no successors
                 }
             }
@@ -69,7 +70,7 @@ impl BlockBuilder {
         }
     }
 
-    pub fn create_blocks(&mut self, func_body: &Vec<HIRInstr>) {
+    pub fn create_blocks(&mut self, func_body: &Vec<HIRInstr>, ssa_versioning: &mut SSAVersion) {
         let mut current_instrs: Vec<HIRInstr> = vec![];
         let mut current_label: Option<Label> = None;
         for instr in func_body {
@@ -92,11 +93,17 @@ impl BlockBuilder {
                 }
                 HIRInstr::Return { value, ty } => {
                     if let Some(label_id) = current_label.take() {
+                        let x: Option<SSATempId> = if let Some(x) = value {
+                            Some(ssa_versioning.convert_hir_temp_to_ssa_temp(x, None))
+                        } else {
+                            None
+                        };
+
                         let temp = BasicBlock {
                             label: label_id.clone(),
                             ssa_instrs: vec![],
                             instrs: current_instrs,
-                            terminator: Terminator::Return(*value),
+                            terminator: Terminator::Return(x, ty.clone()),
                             preds: vec![],
                             phis: HashMap::new(),
                         };
@@ -119,7 +126,7 @@ impl BlockBuilder {
                             ssa_instrs: vec![],
                             instrs: current_instrs,
                             terminator: Terminator::If {
-                                cond: *cond,
+                                cond: ssa_versioning.convert_hir_temp_to_ssa_temp(cond, None),
                                 then_label: then_label.clone(),
                                 else_label: else_label.clone(),
                             },
@@ -156,12 +163,12 @@ impl BlockBuilder {
                     }
                 }
                 _ => {
-                    if let HIRInstr::StoreVar { var, .. } = instr {
+                    if let HIRInstr::StoreVar { var, src, ty } = instr {
                         let x = self.defsites.entry(var.lexeme.clone()).or_default();
                         x.insert(current_label.clone().unwrap());
                         // .insert(current_label.clone().unwrap());
                     }
-                    if let HIRInstr::LoadVar { var, .. } = instr {
+                    if let HIRInstr::LoadVar { var, dest, ty } = instr {
                         if !self.defsites.contains_key(&var.lexeme) {
                             self.defsites.entry(var.lexeme.clone()).or_default();
                         }
@@ -180,7 +187,10 @@ impl BlockBuilder {
     }
 }
 
-pub fn pretty_print_ssa_blocks(block_instrs: &HashMap<Label, BasicBlock>, block_order: &Vec<Label>) {
+pub fn pretty_print_ssa_blocks(
+    block_instrs: &HashMap<Label, BasicBlock>,
+    block_order: &Vec<Label>,
+) {
     for i in block_order {
         let block = block_instrs.get(i).unwrap();
         println!("{}", pretty_print_basic_block_ssa(block));
@@ -190,6 +200,8 @@ pub fn pretty_print_ssa_blocks(block_instrs: &HashMap<Label, BasicBlock>, block_
 
 #[test]
 fn test_single_block_with_return() {
+    let mut ssa_versioning = SSAVersion::new();
+
     let l0 = Label("L0".to_string());
     let t1 = TempId(1);
     let token_x = Token::dummy_identifier("x");
@@ -213,19 +225,21 @@ fn test_single_block_with_return() {
     ];
 
     let mut bb = BlockBuilder::new();
-    bb.create_blocks(&instrs);
+    bb.create_blocks(&instrs, &mut ssa_versioning);
 
     assert_eq!(bb.block_order, vec![l0.clone()]);
     assert_eq!(bb.block_instrs.len(), 1);
 
     let block = bb.block_instrs.get(&l0).unwrap();
     assert_eq!(block.instrs.len(), 2);
-    assert!(matches!(block.terminator, Terminator::Return(Some(_))));
+    assert!(matches!(block.terminator, Terminator::Return(Some(_), _)));
     assert!(bb.defsites[&token_x.lexeme].contains(&l0));
 }
 
 #[test]
 fn test_if_with_join() {
+    let mut ssa_versioning = SSAVersion::new();
+
     let l0 = Label("L0".to_string());
     let l1 = Label("L1".to_string());
     let l2 = Label("L2".to_string());
@@ -275,7 +289,7 @@ fn test_if_with_join() {
     ];
 
     let mut bb = BlockBuilder::new();
-    bb.create_blocks(&instrs);
+    bb.create_blocks(&instrs, &mut ssa_versioning);
 
     assert_eq!(
         bb.block_order,
@@ -293,7 +307,7 @@ fn test_if_with_join() {
     assert!(matches!(bb.block_instrs[&l2].terminator, Terminator::Goto(ref tgt) if *tgt == l3));
     assert!(matches!(
         bb.block_instrs[&l3].terminator,
-        Terminator::Return(Some(_))
+        Terminator::Return(Some(_), _)
     ));
 
     let defs = bb.defsites.get(&token_x.lexeme).unwrap();
@@ -303,6 +317,8 @@ fn test_if_with_join() {
 
 #[test]
 fn test_goto_chain() {
+    let mut ssa_versioning = SSAVersion::new();
+
     let a = Label("A".to_string());
     let b = Label("B".to_string());
 
@@ -343,14 +359,14 @@ fn test_goto_chain() {
     ];
 
     let mut bb = BlockBuilder::new();
-    bb.create_blocks(&instrs);
+    bb.create_blocks(&instrs, &mut ssa_versioning);
 
     assert_eq!(bb.block_order, vec![a.clone(), b.clone()]);
     assert_eq!(bb.block_instrs.len(), 2);
     assert!(matches!(bb.block_instrs[&a].terminator, Terminator::Goto(ref tgt) if *tgt == b));
     assert!(matches!(
         bb.block_instrs[&b].terminator,
-        Terminator::Return(Some(_))
+        Terminator::Return(Some(_),_)
     ));
 
     assert_eq!(
@@ -365,6 +381,8 @@ fn test_goto_chain() {
 
 #[test]
 fn test_loop_backedge() {
+    let mut ssa_versioning = SSAVersion::new();
+
     let loop_lbl = Label("Loop".to_string());
     let exit_lbl = Label("Exit".to_string());
     let t1 = TempId(1);
@@ -400,7 +418,7 @@ fn test_loop_backedge() {
     ];
 
     let mut bb = BlockBuilder::new();
-    bb.create_blocks(&instrs);
+    bb.create_blocks(&instrs, &mut ssa_versioning);
 
     assert_eq!(bb.block_order, vec![loop_lbl.clone(), exit_lbl.clone()]);
     assert_eq!(bb.block_instrs.len(), 2);
@@ -413,7 +431,7 @@ fn test_loop_backedge() {
 
     assert!(matches!(
         bb.block_instrs[&exit_lbl].terminator,
-        Terminator::Return(Some(_))
+        Terminator::Return(Some(_),_)
     ));
     assert_eq!(
         bb.defsites[&token_i.lexeme],

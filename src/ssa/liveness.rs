@@ -67,6 +67,8 @@ impl Liveness {
                 }
                 self.live_out.insert(label.clone(), out_set);
             }
+
+            
         }
         // for (label, live) in &live_in {
         //     println!("Live-in @ {}: {:?}", label.0, live);

@@ -22,3 +22,5 @@ pub mod ssa_types;
 pub mod lir_types;
 
 pub mod op;
+
+pub mod x86_64;

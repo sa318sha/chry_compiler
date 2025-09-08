@@ -1,5 +1,5 @@
 
-
+/*
 fun a () {
 
     var b: int = 12;
@@ -8,6 +8,17 @@ fun a () {
     }
     var a: int = 12+b;
     return;
+}
+*/
+
+fun a_2() {
+    var b: int = 24;
+    if (b < 25) {
+        b = 12;
+    }else {
+        b =13;
+    }
+    b;
 }
 
 /*

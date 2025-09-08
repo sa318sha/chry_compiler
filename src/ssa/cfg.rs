@@ -45,7 +45,7 @@ pub struct CFG {
     dfs_numbers: HashMap<Label, DFSNumber>, // uses the label to get the corresponding dfs_number in hashmap
     // dfs_label: HashMap<DFSNumber, Label>, // uses the dfs index to get the corresponding lbael in hashmap
     pub pre_order: Vec<HashIndex>, // pushes the arbritary index to order it
-    pub post_order: Vec<HashIndex>,
+    pub post_order: Vec<Label>,
     dfs_parents: Vec<Option<HashIndex>>, //indexed by arbritary value ie index
 
     visited: Vec<bool>, //indexed by arbritary value ie index
@@ -108,7 +108,7 @@ impl CFG {
 
         let dfs_number = DFSNumber(self.pre_order.len());
         let label = self.index_to_label[idx.0].clone();
-        self.dfs_numbers.insert(label, dfs_number);
+        self.dfs_numbers.insert(label.clone(), dfs_number);
         self.pre_order.push(idx);
 
         for succ_label in &self.blocks[idx.0].successors.clone() {
@@ -117,7 +117,7 @@ impl CFG {
             }
         }
 
-        self.post_order.push(idx);
+        self.post_order.push(label);
     }
 
     pub fn pretty_print_dfs(&self) {

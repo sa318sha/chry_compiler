@@ -1,6 +1,7 @@
 use crate::ssa::block_builder::pretty_print_ssa_blocks;
 use crate::ssa::cfg::CFG;
 use crate::ssa::ssa_state::SSAState;
+use crate::ssa::ssa_version::SSAVersion;
 use crate::types::hir_types::pretty_print_hir_instr;
 // Adjust path if needed
 use crate::types::literal::Literal;
@@ -13,8 +14,10 @@ use crate::{
 
 // Utility to run phi insertion and extract inserted phi set for a block
 fn run_phi_insertion(instrs: Vec<HIRInstr>, target: &Label) -> Vec<String> {
+    let mut ssa_version = SSAVersion::new();
+
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&instrs);
+    builder.create_blocks(&instrs,&mut ssa_version);
     builder.calculate_preds();
 
     let mut cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);

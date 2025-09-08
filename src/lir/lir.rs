@@ -1,9 +1,11 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::ssa::ssa::SSAContext;
 use crate::types::hir_types::HIRInstr;
 use crate::types::lir_types::{LIRBasicBlock, LIRExpr, LIRTerminator, VirtualReg};
 use crate::types::ssa_types::PhiNode;
+use crate::types::types::Type;
 use crate::{
     ssa::ssa::SSAProgram,
     types::{
@@ -17,13 +19,15 @@ pub struct LIRLowering {
     ssa_to_lir: HashMap<SSATempId, VirtualReg>, // SSA temp → vreg mapping
     reg_alloc: VirtualRegAllocator,             // fresh virtual register generator
     lir_blocks: HashMap<Label, LIRBasicBlock>,  // work-in-progress result
-    block_order: Vec<Label>,                    // inherited from SSAProgram
+    reverse_post_order: Vec<Label>,
+    block_order: Vec<Label>, // inherited from SSAProgram
     phi_dest_regs: HashMap<SSATempId, VirtualReg>,
 }
 pub struct LIRProgram {
-    entry: Label,                          // Entry point to the function
-    blocks: HashMap<Label, LIRBasicBlock>, // Block label → block body
-    block_order: Vec<Label>,               // Ordered traversal (e.g. RPO)
+    entry: Label,                              // Entry point to the function
+    pub blocks: HashMap<Label, LIRBasicBlock>, // Block label → block body
+    pub block_order: Vec<Label>,               // linear traversal of blocks visited
+    pub reverse_post_order: Vec<Label>,
 }
 
 pub fn lower_to_lir(programs: Vec<SSAContext>) -> Vec<LIRProgram> {
@@ -42,15 +46,16 @@ impl LIRLowering {
             lir_blocks: HashMap::new(),
             phi_dest_regs: HashMap::new(),
             block_order: ssa_context.program.block_order.clone(),
+            reverse_post_order: ssa_context.metadata.cfg.post_order.clone(),
         };
         //0th pass
         for block_label in &ssa_context.program.block_order {
             let phis = &ssa_context.program.blocks[block_label].phis;
             for (var, phi_node) in phis {
-                for (label, ssa_id) in &phi_node.args {
-                    let dest_reg = lowering.reg_alloc.fresh();
-                    lowering.phi_dest_regs.insert(phi_node.dest.clone(), dest_reg);
-                }
+                let dest_reg = lowering.reg_alloc.fresh(&phi_node.ty);
+                lowering
+                    .phi_dest_regs
+                    .insert(phi_node.dest.clone(), dest_reg);
             }
         }
 
@@ -71,6 +76,8 @@ impl LIRLowering {
             entry: ssa_context.program.entry.clone(),
             blocks: lowering.lir_blocks,
             block_order: ssa_context.program.block_order.clone(),
+            reverse_post_order: lowering.reverse_post_order,
+            // predecessor:
         }
     }
 
@@ -81,8 +88,8 @@ impl LIRLowering {
 
         for (var, phi_node) in phis {
             for (pred_label, incoming_ssa_id) in &phi_node.args {
-                let src_reg: VirtualReg = self.ssa_to_lir[&incoming_ssa_id]; //(or phi_dest_regs if it's a phi)
-                let dest_reg = self.phi_dest_regs[&phi_node.dest];
+                let src_reg: VirtualReg = self.resolve_lir_temp(incoming_ssa_id); //(or phi_dest_regs if it's a phi)
+                let dest_reg = self.phi_dest_regs[&phi_node.dest].clone();
                 phi_moves_per_pred
                     .entry(pred_label.clone())
                     .or_insert(vec![])
@@ -97,30 +104,30 @@ impl LIRLowering {
 
             for (dest, src) in &moves {
                 if dests.contains(&src) {
-                    let temp = self.reg_alloc.fresh();
+                    let temp = self.reg_alloc.fresh_from_reg_size(&dest.reg_size);
                     let pred_block = self.lir_blocks.get_mut(&pred_label).unwrap();
                     pred_block.instrs.push(LIRInstr::Move {
-                        dest: temp,
-                        src: *src,
+                        dest: temp.clone(),
+                        src: src.clone(),
                     });
-                    temps.insert(*dest, temp);
+                    temps.insert(dest.clone(), temp);
                 } else {
-                    safe_moves.push((*dest, *src));
+                    safe_moves.push((dest.clone(), src.clone()));
                 }
             }
 
             for (dest, temp) in &temps {
                 let pred_block = self.lir_blocks.get_mut(&pred_label).unwrap();
                 pred_block.instrs.push(LIRInstr::Move {
-                    dest: *dest,
-                    src: *temp,
+                    dest: dest.clone(),
+                    src: temp.clone(),
                 });
             }
             for (dest, src) in &safe_moves {
                 let pred_block = self.lir_blocks.get_mut(&pred_label).unwrap();
                 pred_block.instrs.push(LIRInstr::Move {
-                    dest: *dest,
-                    src: *src,
+                    dest: dest.clone(),
+                    src: src.clone(),
                 });
             }
         }
@@ -139,36 +146,36 @@ impl LIRLowering {
         let terminator = self.lower_terminator(&block.terminator);
 
         LIRBasicBlock {
+            preds: block.preds.clone(),
             label: block.label.clone(),
             instrs,
-            pending_moves: Vec::new(),
             terminator: terminator,
         }
     }
 
     fn lower_ssa_instr(&mut self, ssa_instr: &SSAInstr) -> Option<LIRInstr> {
         match ssa_instr {
-            SSAInstr::Assign { dest, expr } => {
-                let dest_reg = self.reg_alloc.fresh();
-                self.ssa_to_lir.insert(dest.clone(), dest_reg);
+            SSAInstr::Assign { dest, expr, ty } => {
+                let dest_reg = self.reg_alloc.fresh(&ty);
+                self.ssa_to_lir.insert(dest.clone(), dest_reg.clone());
 
                 let lir_expr = match expr {
                     SSAExpr::Const(lit) => LIRExpr::Const(lit.clone()),
                     SSAExpr::Var { val } => {
-                        println!("{}_{}", val.name, val.version);
+                        // println!("{}_{}", val.name, val.version);
                         let src = &self.resolve_lir_temp(val);
                         LIRExpr::Var(src.clone())
                     }
                     SSAExpr::Unary { op, src } => {
-                        let src_reg = self.ssa_to_lir[src];
+                        let src_reg = &self.ssa_to_lir[src];
                         LIRExpr::Unary {
                             op: op.clone(),
-                            val: src_reg,
+                            val: src_reg.clone(),
                         }
                     }
                     SSAExpr::Binary { op, lhs, rhs } => {
-                        let lhs_reg = self.ssa_to_lir[lhs];
-                        let rhs_reg = self.ssa_to_lir[rhs];
+                        let lhs_reg = self.ssa_to_lir[lhs].clone();
+                        let rhs_reg = self.ssa_to_lir[rhs].clone();
                         LIRExpr::Binary {
                             op: op.clone(),
                             lhs: lhs_reg,
@@ -176,19 +183,21 @@ impl LIRLowering {
                         }
                     }
                     SSAExpr::Call { func, args } => {
-                        let arg_regs = args.iter().map(|a| self.ssa_to_lir[a]).collect();
+                        let arg_regs = args.iter().map(|a| self.ssa_to_lir[a].clone()).collect();
                         return Some(LIRInstr::Call {
                             func: func.clone(),
                             args: arg_regs,
-                            dest: dest_reg,
+                            dest: dest_reg.clone(),
+                            ty: ty.clone(),
                         });
                     }
                 };
                 let x = LIRInstr::Assign {
-                    dest: dest_reg,
+                    dest: dest_reg.clone(),
                     expr: lir_expr,
+                    ty: ty.clone(),
                 };
-                println!("{}", x.clone());
+                // println!("{}", x.clone());
                 Some(x)
                 // println!("{}", LIRInstr::Assign {
                 //     expr: lir_expr.,
@@ -202,11 +211,11 @@ impl LIRLowering {
         self.ssa_to_lir
             .get(id)
             .or_else(|| self.phi_dest_regs.get(id))
-            .copied()
+            .cloned()
             .expect("SSA value not found")
     }
 
-    fn lower_terminator(&self, term: &Terminator) -> LIRTerminator {
+    fn lower_terminator(&mut self, term: &Terminator) -> LIRTerminator {
         match term {
             Terminator::Goto(label) => LIRTerminator::Jump(label.clone()),
             Terminator::If {
@@ -214,27 +223,48 @@ impl LIRLowering {
                 then_label,
                 else_label,
             } => {
-                let cond_reg = VirtualReg(cond.0); // assumes TempId(u32) maps directly to vreg
+                let cond_reg = self.resolve_lir_temp(&cond); // assumes TempId(u32) maps directly to vreg
                 LIRTerminator::Branch {
                     cond: cond_reg,
                     then_label: then_label.clone(),
                     else_label: else_label.clone(),
                 }
             }
-            Terminator::Return(opt) => {
-                let val = opt.as_ref().map(|t| VirtualReg(t.0));
+            Terminator::Return(opt, ty) => {
+                let val = opt.as_ref().map(|t| self.resolve_lir_temp(&t));
                 LIRTerminator::Return(val)
             }
         }
     }
 }
 
-impl std::fmt::Display for LIRProgram {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+// pub fn pretty_print_lir_programs(programs: &[LIRProgram]) -> String {
+//     let mut out = String::new();
+//     for (i, p) in programs.iter().enumerate() {
+//         let _ = writeln!(out, ";; ===========================================");
+//         let _ = writeln!(out, ";; Function {}:", i);
+//         let _ = writeln!(out, "{}", p);
+//     }
+//     out
+// }
+
+impl fmt::Display for LIRProgram {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, ";; LIR Program")?;
         writeln!(f, "entry: {}", self.entry.0)?;
-        for label in &self.block_order {
-            if let Some(block) = self.blocks.get(label) {
-                writeln!(f, "{}", block)?;
+        writeln!(f, "blocks: {}", self.blocks.len())?;
+        writeln!(f)?;
+
+        for lbl in &self.block_order {
+            match self.blocks.get(lbl) {
+                Some(bb) => {
+                    // LIRBasicBlock already has Display
+                    writeln!(f, "{}", bb)?;
+                }
+                None => {
+                    // Keep debugging-friendly if block_order references a missing block.
+                    writeln!(f, "LABEL {}:\n  <missing block body>\n", lbl.0)?;
+                }
             }
         }
         Ok(())

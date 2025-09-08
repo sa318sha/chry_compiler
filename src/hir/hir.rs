@@ -46,7 +46,7 @@ impl HIR {
             }
         }
 
-        println!("{}", self.pretty_print_program());
+        // println!("{}", self.pretty_print_program());
     }
 
     fn lower_typed_ast(&mut self, typed_stmt: &TypedStmt) {
@@ -404,14 +404,14 @@ impl HIR {
                     ty: expr_type.clone(),
                 };
 
-                let move_val = HIRInstr::Move {
-                    dest: result_temp,
-                    src: rhs_id,
-                    ty: expr_type,
-                };
+                // let move_val = HIRInstr::Move {
+                //     dest: result_temp,
+                //     src: rhs_id,
+                //     ty: expr_type,
+                // };
                 result.extend(rhs_val);
                 result.push(store_val);
-                result.push(move_val);
+                // result.push(move_val);
                 return Ok((result, rhs_id));
             }
         }

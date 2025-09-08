@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::{
-    ssa::{block_builder::BlockBuilder, cfg::CFG},
+    ssa::{block_builder::BlockBuilder, cfg::CFG, ssa_version::SSAVersion},
     types::{
         hir_types::{HIRInstr, Label, TempId},
         literal::Literal,
@@ -12,6 +12,7 @@ use crate::{
 
 #[test]
 fn test_cfg_straight_line() {
+    let mut ssa_version = SSAVersion::new();
     let l0 = Label("L0".to_string());
     let l1 = Label("L1".to_string());
 
@@ -39,7 +40,7 @@ fn test_cfg_straight_line() {
     ];
 
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&instrs);
+    builder.create_blocks(&instrs,&mut ssa_version);
     builder.calculate_preds();
 
     let cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);
@@ -56,6 +57,7 @@ fn test_cfg_straight_line() {
 
 #[test]
 fn test_cfg_if_join_diamond() {
+    let mut ssa_version = SSAVersion::new();
     let l0 = Label("L0".to_string());
     let l1 = Label("L1".to_string());
     let l2 = Label("L2".to_string());
@@ -83,7 +85,7 @@ fn test_cfg_if_join_diamond() {
     ];
 
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&instrs);
+    builder.create_blocks(&instrs,&mut ssa_version);
     builder.calculate_preds();
 
     let cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);
@@ -106,6 +108,7 @@ fn test_cfg_if_join_diamond() {
 
 #[test]
 fn test_cfg_dead_code_block() {
+    let mut ssa_version = SSAVersion::new();
     let l0 = Label("L0".to_string());
     let l1 = Label("L1".to_string());
     let l_dead = Label("Dead".to_string());
@@ -131,7 +134,7 @@ fn test_cfg_dead_code_block() {
     ];
 
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&instrs);
+    builder.create_blocks(&instrs,&mut ssa_version);
     builder.calculate_preds();
 
     let cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);
@@ -148,6 +151,7 @@ fn test_cfg_dead_code_block() {
 
 #[test]
 fn test_cfg_while_loop_structure() {
+    let mut ssa_version = SSAVersion::new();
     let l0 = Label("L0".to_string()); // loop header
     let l1 = Label("L1".to_string()); // loop body
     let l2 = Label("L2".to_string()); // exit
@@ -183,7 +187,7 @@ fn test_cfg_while_loop_structure() {
     ];
 
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&instrs);
+    builder.create_blocks(&instrs,&mut ssa_version);
     builder.calculate_preds();
 
     let cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);
@@ -199,6 +203,8 @@ fn test_cfg_while_loop_structure() {
 
 #[test]
 fn test_cfg_pre_order_and_parents_for_while() {
+
+    let mut ssa_version = SSAVersion::new();
     let l0 = Label("L0".to_string());
     let l1 = Label("L1".to_string());
     let l2 = Label("L2".to_string());
@@ -229,7 +235,7 @@ fn test_cfg_pre_order_and_parents_for_while() {
     ];
 
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&instrs);
+    builder.create_blocks(&instrs, &mut ssa_version);
     builder.calculate_preds();
 
     let mut cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);

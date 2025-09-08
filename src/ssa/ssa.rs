@@ -1,15 +1,16 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use crate::{
     ssa::{
-        block_builder::{BlockBuilder, pretty_print_ssa_blocks},
-        cfg::{CFG, DFSNumber},
+        block_builder::{pretty_print_ssa_blocks, BlockBuilder},
+        cfg::{DFSNumber, CFG},
         dominator::Dominator,
         ssa_state::SSAState,
+        ssa_version::SSAVersion,
     },
     types::{
         hir_types::{HIRFunction, Label},
-        ssa_types::{BasicBlock, pretty_print_ssa_block},
+        ssa_types::{pretty_print_basic_block, pretty_print_basic_block_ssa, BasicBlock},
         // ssa_types::SSAFunction,
     },
 };
@@ -24,8 +25,10 @@ pub fn lower_functions_to_ssa(functions: &Vec<HIRFunction>) -> Vec<SSAContext> {
 }
 
 pub fn lower_to_ssa_program(function: &HIRFunction) -> SSAContext {
+    let mut ssa_versioning = SSAVersion::new();
+
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&function.body);
+    builder.create_blocks(&function.body, &mut ssa_versioning);
     builder.calculate_preds();
 
     let mut program =
@@ -45,10 +48,11 @@ pub fn lower_to_ssa_program(function: &HIRFunction) -> SSAContext {
         &metadata.cfg,
         &mut program.blocks,
         &program.entry,
+        &mut ssa_versioning,
     );
 
     // builder.pretty_print_ssa_blocks();
-    pretty_print_ssa_blocks(&program.blocks, &program.block_order);
+    // pretty_print_ssa_blocks(&program.blocks, &program.block_order);
     return SSAContext {
         program: program,
         metadata: metadata,
@@ -58,6 +62,7 @@ pub fn lower_to_ssa_program(function: &HIRFunction) -> SSAContext {
 pub struct SSAProgram {
     pub blocks: HashMap<Label, BasicBlock>,
     pub block_order: Vec<Label>,
+    // pub rpo: Vec<Label>,
     pub entry: Label,
 }
 
@@ -104,31 +109,49 @@ pub struct SSAContext {
     pub metadata: SSAMetadata,
 }
 
-impl SSAContext {
-    pub fn from_function(function: &HIRFunction) -> Self {
-        let mut builder = BlockBuilder::new();
-        builder.create_blocks(&function.body);
-        builder.calculate_preds();
+/// Pretty print an SSAProgram
+impl fmt::Display for SSAProgram {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, ";; SSA Program")?;
+        writeln!(f, "entry: {}", self.entry.0)?;
+        writeln!(f, "blocks: {}", self.blocks.len())?;
+        writeln!(f)?;
 
-        let mut program = SSAProgram::from_blocks(builder.block_instrs, builder.block_order);
-        let metadata = SSAMetadata::compute_from(&program);
+        for label in &self.block_order {
+            if let Some(block) = self.blocks.get(label) {
+                writeln!(f, "{}", pretty_print_basic_block_ssa(block))?;
+            } else {
+                writeln!(f, "LABEL {}:\n  <missing block body>\n", label.0)?;
+            }
+        }
+        Ok(())
+    }
+}
 
-        let mut state = SSAState::new();
-        state.insert_phi_nodes(
-            &metadata.cfg,
-            &mut builder.defsites,
-            &metadata.dom_frontier,
-            &mut program.blocks,
-        );
+/// Pretty print SSAMetadata (CFG + dom tree + frontier sizes)
+impl fmt::Display for SSAMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, ";; SSAMetadata")?;
+        // writeln!(f, "CFG:")?;
+        // writeln!(f, "{}", self.cfg)?; // assumes CFG implements Display
+        writeln!(f, "Dom Tree:")?;
+        for (i, children) in self.dom_tree.iter().enumerate() {
+            let kids: Vec<String> = children.iter().map(|d| format!("{:?}", d)).collect();
+            writeln!(f, "  {:?} -> [{}]", DFSNumber(i), kids.join(", "))?;
+        }
+        writeln!(f, "Dom Frontier:")?;
+        for (i, frontier) in self.dom_frontier.iter().enumerate() {
+            let fset: Vec<String> = frontier.iter().map(|d| format!("{:?}", d)).collect();
+            writeln!(f, "  {:?} : [{}]", DFSNumber(i), fset.join(", "))?;
+        }
+        Ok(())
+    }
+}
 
-        state.rename_vars(
-            &metadata.dom_tree,
-            &metadata.cfg,
-            &mut program.blocks,
-            &program.entry,
-        );
-
-        pretty_print_ssa_blocks(&program.blocks, &program.block_order);
-        SSAContext { program, metadata }
+/// Pretty print SSAContext
+impl fmt::Display for SSAContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}", self.program)
+        // writeln!(f, "{}", self.metadata)
     }
 }

@@ -1,6 +1,8 @@
 use crate::ssa::liveness::Liveness;
+use crate::ssa::ssa_version::SSAVersion;
 use crate::types::hir_types::{HIRInstr, TempId};
 use crate::types::ssa_types::{BasicBlock, PhiNode, SSAExpr, SSAInstr, SSATempId};
+use crate::types::types::Type;
 use crate::{
     ssa::{
         // block_builder::{BasicBlock, PhiNode},
@@ -11,22 +13,48 @@ use crate::{
 use std::collections::{HashMap, HashSet};
 use std::convert;
 pub struct SSAState {
-    var_version: HashMap<String, usize>,
     var_stack: HashMap<String, Vec<SSATempId>>,
     anon_temp_counter: usize,
-    hir_to_ssa_temp: HashMap<TempId, SSATempId>,
+    pub var_type_map: HashMap<String, Type>,
     liveness: Liveness,
 }
 
 impl SSAState {
     pub fn new() -> SSAState {
         return SSAState {
-            var_version: HashMap::new(),
+            // var_version: HashMap::new(),
+            var_type_map: HashMap::new(),
             var_stack: HashMap::new(),
-            hir_to_ssa_temp: HashMap::new(),
+            // hir_to_ssa_temp: HashMap::new(),
             anon_temp_counter: 0,
             liveness: Liveness::new(),
         };
+    }
+
+    pub fn extract_types_from_hir(&mut self, blocks: &HashMap<Label, BasicBlock>) {
+        for block in blocks.values() {
+            for instr in &block.instrs {
+                match instr {
+                    HIRInstr::Const { dest, ty, .. } => {
+                        self.var_type_map
+                            .insert(format!("_tmp{}", dest.0), ty.clone());
+                    }
+                    HIRInstr::StoreVar { var, ty, .. } => {
+                        self.var_type_map.insert(var.lexeme.clone(), ty.clone());
+                    }
+                    HIRInstr::Move { dest, ty, .. } => {
+                        self.var_type_map
+                            .insert(format!("_tmp{}", dest.0), ty.clone());
+                    }
+                    HIRInstr::Call { dest, ty, .. } => {
+                        self.var_type_map
+                            .insert(format!("_tmp{}", dest.0), ty.clone());
+                    }
+                    // Add more if needed
+                    _ => {}
+                }
+            }
+        }
     }
 
     pub fn insert_phi_nodes(
@@ -36,6 +64,7 @@ impl SSAState {
         dominance_frontier: &Vec<Vec<DFSNumber>>,
         builder_blocks: &mut HashMap<Label, BasicBlock>,
     ) {
+        self.extract_types_from_hir(&builder_blocks);
         self.liveness.compute_liveness(cfg, builder_blocks);
         // for (label, live_vars) in &liveness {
         //     println!("LIVE @ {:?}: {:?}", label, live_vars);
@@ -85,6 +114,11 @@ impl SSAState {
                                         name: var.clone(),
                                         version: 0,
                                     },
+                                    ty: self
+                                        .var_type_map
+                                        .get(var)
+                                        .expect(&format!("No type info for phi node of `{}`", var))
+                                        .clone(),
                                     args: HashMap::new(),
                                 });
 
@@ -102,13 +136,14 @@ impl SSAState {
         cfg: &CFG,
         builder_blocks: &mut HashMap<Label, BasicBlock>,
         label: &Label,
+        ssa_versioning: &mut SSAVersion,
     ) {
         let block = builder_blocks.get_mut(label).unwrap();
         {
             let mut ssa_instrs = Vec::new();
 
             for (var, phi) in block.phis.iter_mut() {
-                let version = self.next_version(var);
+                let version = ssa_versioning.next_version(var);
                 let ssa_id = SSATempId {
                     name: var.clone(),
                     version,
@@ -118,7 +153,7 @@ impl SSAState {
             }
 
             for hir_instr in &block.instrs {
-                if let Some(ssa_instr) = self.convert_hir_instr_to_ssa(hir_instr) {
+                if let Some(ssa_instr) = self.convert_hir_instr_to_ssa(hir_instr, ssa_versioning) {
                     ssa_instrs.push(ssa_instr);
                 }
             }
@@ -140,7 +175,13 @@ impl SSAState {
         let dfs_num = cfg.dfs_num(label);
         for child_dfs in &dominator_tree[dfs_num.0] {
             let child_label = cfg.get_label(cfg.pre_order[child_dfs.0]);
-            self.rename_vars(dominator_tree, cfg, builder_blocks, child_label);
+            self.rename_vars(
+                dominator_tree,
+                cfg,
+                builder_blocks,
+                child_label,
+                ssa_versioning,
+            );
         }
 
         let block = builder_blocks.get(label).unwrap();
@@ -170,27 +211,27 @@ impl SSAState {
         // }
     }
 
-    fn next_version(&mut self, var: &String) -> usize {
-        let val = self.var_version.entry(var.to_string()).or_insert(0);
-        *val += 1;
-        *val
-    }
-
-    fn convert_hir_instr_to_ssa(&mut self, hir_instr: &HIRInstr) -> Option<SSAInstr> {
+    fn convert_hir_instr_to_ssa(
+        &mut self,
+        hir_instr: &HIRInstr,
+        ssa_versioning: &mut SSAVersion,
+    ) -> Option<SSAInstr> {
         match hir_instr {
             HIRInstr::Const { dest, value, ty } => {
                 return Some(SSAInstr::Assign {
-                    dest: self.convert_hir_temp_to_ssa_temp(dest, None),
+                    dest: ssa_versioning.convert_hir_temp_to_ssa_temp(dest, None),
                     expr: SSAExpr::Const(value.clone()),
+                    ty: ty.clone(),
                 });
             }
             HIRInstr::UnaryOp { dest, op, src, ty } => {
                 return Some(SSAInstr::Assign {
-                    dest: self.convert_hir_temp_to_ssa_temp(dest, None),
+                    dest: ssa_versioning.convert_hir_temp_to_ssa_temp(dest, None),
                     expr: SSAExpr::Unary {
                         op: op.clone(),
-                        src: self.convert_hir_temp_to_ssa_temp(src, None),
+                        src: ssa_versioning.convert_hir_temp_to_ssa_temp(src, None),
                     },
+                    ty: ty.clone(),
                 });
             }
             HIRInstr::BinaryOp {
@@ -204,12 +245,13 @@ impl SSAState {
                 // let rhs_ssa = self.var_stack[&rhs.name].last().unwrap().clone();
 
                 return Some(SSAInstr::Assign {
-                    dest: self.convert_hir_temp_to_ssa_temp(dest, None),
+                    dest: ssa_versioning.convert_hir_temp_to_ssa_temp(dest, None),
                     expr: SSAExpr::Binary {
                         op: op.clone(),
-                        lhs: self.convert_hir_temp_to_ssa_temp(lhs, None),
-                        rhs: self.convert_hir_temp_to_ssa_temp(rhs, None),
+                        lhs: ssa_versioning.convert_hir_temp_to_ssa_temp(lhs, None),
+                        rhs: ssa_versioning.convert_hir_temp_to_ssa_temp(rhs, None),
                     },
+                    ty: ty.clone(),
                 });
             }
             HIRInstr::LoadVar { dest, var, ty } => {
@@ -220,16 +262,19 @@ impl SSAState {
                     .cloned();
                 if let Some(version) = val {
                     return Some(SSAInstr::Assign {
-                        dest: self.convert_hir_temp_to_ssa_temp(dest, None),
+                        dest: ssa_versioning.convert_hir_temp_to_ssa_temp(dest, None),
                         expr: SSAExpr::Var { val: version },
+                        ty: ty.clone(),
                     });
                 } else {
                     todo!("ERROR")
                 }
             }
             HIRInstr::StoreVar { var, src, ty } => {
+                self.var_type_map.insert(var.lexeme.clone(), ty.clone());
+
                 let versioned_var =
-                    self.convert_hir_temp_to_ssa_temp(src, Some(var.lexeme.clone()));
+                    ssa_versioning.convert_hir_temp_to_ssa_temp(src, Some(var.lexeme.clone()));
                 self.var_stack
                     .entry(var.lexeme.clone())
                     .or_default()
@@ -237,8 +282,9 @@ impl SSAState {
                 return Some(SSAInstr::Assign {
                     dest: versioned_var,
                     expr: SSAExpr::Var {
-                        val: self.convert_hir_temp_to_ssa_temp(src, None),
+                        val: ssa_versioning.convert_hir_temp_to_ssa_temp(src, None),
                     },
+                    ty: ty.clone(),
                 });
             }
             HIRInstr::Call {
@@ -250,107 +296,29 @@ impl SSAState {
                 let mut ssa_temp_ids: Vec<SSATempId> = vec![];
                 // todo!();
                 for arg in args {
-                    ssa_temp_ids.push(self.convert_hir_temp_to_ssa_temp(arg, None));
+                    ssa_temp_ids.push(ssa_versioning.convert_hir_temp_to_ssa_temp(arg, None));
                 }
 
                 return Some(SSAInstr::Assign {
-                    dest: self.convert_hir_temp_to_ssa_temp(dest, None),
+                    dest: ssa_versioning.convert_hir_temp_to_ssa_temp(dest, None),
                     expr: SSAExpr::Call {
                         func: func.lexeme.clone(),
                         args: ssa_temp_ids,
                     },
+                    ty: ty.clone(),
                 });
             }
             HIRInstr::Print { src, ty } => None,
             HIRInstr::Move { dest, src, ty } => {
                 return Some(SSAInstr::Assign {
-                    dest: self.convert_hir_temp_to_ssa_temp(dest, None),
+                    dest: ssa_versioning.convert_hir_temp_to_ssa_temp(dest, None),
                     expr: SSAExpr::Var {
-                        val: self.convert_hir_temp_to_ssa_temp(src, None),
+                        val: ssa_versioning.convert_hir_temp_to_ssa_temp(src, None),
                     },
+                    ty: ty.clone(),
                 });
             }
             _ => None,
         }
     }
-
-    fn convert_hir_temp_to_ssa_temp(
-        &mut self,
-        hir_temp: &TempId,
-        from_variable: Option<String>,
-    ) -> SSATempId {
-        if let Some(var_name) = from_variable {
-            let version = self.next_version(&var_name);
-            // let version = self.var_version.entry(var_name.clone()).or_insert(0);
-            let temp = SSATempId {
-                name: var_name,
-                version: version,
-            };
-            // *version += 1;
-            return temp;
-        } else {
-            if let Some(temp) = self.hir_to_ssa_temp.get(hir_temp) {
-                return temp.clone();
-            }
-            let temp = SSATempId {
-                name: "_tmp".to_string(),
-                version: self.anon_temp_counter,
-            };
-            self.anon_temp_counter += 1;
-            self.hir_to_ssa_temp.insert(*hir_temp, temp.clone());
-            return temp;
-        }
-    }
 }
-
-// impl HIRInstr {
-//     pub fn rename_uses(&mut self, stack: &HashMap<String, Vec<SSATempId>>) {
-//         match self {
-//             HIRInstr::BinaryOp { lhs, rhs, .. } => {
-//                 if let Some(v) = stack.get(&lhs.name) {
-//                     *lhs = TempId::from_ssa(v.last().unwrap());
-//                 }
-//                 if let Some(v) = stack.get(&rhs.name) {
-//                     *rhs = TempId::from_ssa(v.last().unwrap());
-//                 }
-//             }
-//             HIRInstr::LoadVar { var, .. } => {
-//                 if let Some(v) = stack.get(&var.lexeme) {
-//                     *var = Token::from_ssa(v.last().unwrap()); // you'll define this
-//                 }
-//             }
-//             HIRInstr::Move { src, .. } => {
-//                 if let Some(v) = stack.get(&src.name) {
-//                     *src = TempId::from_ssa(v.last().unwrap());
-//                 }
-//             }
-//             // add more as needed
-//             _ => {}
-//         }
-//     }
-
-//     pub fn defines(&self) -> Option<String> {
-//         match self {
-//             HIRInstr::StoreVar { var, .. } => Some(var.lexeme.clone()),
-//             HIRInstr::Move { dest, .. } => Some(dest.name.clone()),
-//             HIRInstr::Const { dest, .. } => Some(dest.name.clone()),
-//             HIRInstr::BinaryOp { dest, .. } => Some(dest.name.clone()),
-//             _ => None,
-//         }
-//     }
-
-//     pub fn rename_def(&mut self, new_id: SSATempId) {
-//         match self {
-//             HIRInstr::StoreVar { var, .. } => {
-//                 *var = Token::from_ssa(&new_id); // Token type might need extending
-//             }
-//             HIRInstr::Move { dest, .. } => {
-//                 *dest = TempId::from_ssa(&new_id);
-//             }
-//             HIRInstr::BinaryOp { dest, .. } => {
-//                 *dest = TempId::from_ssa(&new_id);
-//             }
-//             _ => {}
-//         }
-//     }
-// }

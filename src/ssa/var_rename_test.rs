@@ -2,6 +2,7 @@
 mod tests {
     use super::*;
     use crate::ssa::block_builder::pretty_print_ssa_blocks;
+    use crate::ssa::ssa_version::SSAVersion;
     use crate::ssa::{
         block_builder::BlockBuilder, cfg::CFG, dominator::Dominator, ssa_state::SSAState,
     };
@@ -13,8 +14,10 @@ mod tests {
     use std::collections::HashSet;
 
     fn run_rename_pipeline(instrs: Vec<HIRInstr>) -> HashMap<Label, BasicBlock> {
+        let mut ssa_versioning = SSAVersion::new();
+
         let mut builder = BlockBuilder::new();
-        builder.create_blocks(&instrs);
+        builder.create_blocks(&instrs, &mut ssa_versioning);
         builder.calculate_preds();
 
         let mut cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);
@@ -39,6 +42,7 @@ mod tests {
             &cfg,
             &mut builder.block_instrs,
             &cfg.entry_label,
+            &mut ssa_versioning,
         );
 
         dom.pretty_print_dominator_tree(&cfg);

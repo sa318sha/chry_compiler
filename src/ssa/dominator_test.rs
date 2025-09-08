@@ -1,6 +1,9 @@
+use crate::ssa;
 use crate::ssa::block_builder::BlockBuilder;
 use crate::ssa::cfg::CFG;
 use crate::ssa::dominator::Dominator;
+use crate::ssa::ssa_version;
+use crate::ssa::ssa_version::SSAVersion;
 use crate::types::hir_types::HIRInstr;
 use crate::types::hir_types::Label;
 use crate::types::hir_types::TempId;
@@ -11,8 +14,9 @@ use std::collections::{HashMap, HashSet};
 
 // Helper for running a dominator test
 fn run_dom_test<F: FnOnce(&CFG, &Dominator)>(instrs: Vec<HIRInstr>, check: F) {
+    let mut ssa_version = SSAVersion::new();
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&instrs);
+    builder.create_blocks(&instrs, &mut ssa_version);
     builder.calculate_preds();
 
     let mut cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);
@@ -156,6 +160,8 @@ fn test_if_else_join() {
 
 #[test]
 fn test_dominator_and_df_diamond() {
+    let mut ssa_version = SSAVersion::new();
+
     let l0 = Label("L0".into());
     let l1 = Label("L1".into());
     let l2 = Label("L2".into());
@@ -184,7 +190,7 @@ fn test_dominator_and_df_diamond() {
     ];
 
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&hir);
+    builder.create_blocks(&hir, &mut ssa_version);
     builder.calculate_preds();
 
     let mut cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);
@@ -407,6 +413,8 @@ fn test_dominance_frontier_nested_ifs_and_loops() {
 
 #[test]
 fn test_dominator_with_unreachable_block() {
+    let mut ssa_version = SSAVersion::new();
+
     let l0 = Label("L0".into());
     let l1 = Label("L1".into());
     let l2 = Label("L2".into());
@@ -435,7 +443,7 @@ fn test_dominator_with_unreachable_block() {
     ];
 
     let mut builder = BlockBuilder::new();
-    builder.create_blocks(&hir);
+    builder.create_blocks(&hir, &mut ssa_version);
     builder.calculate_preds();
 
     let mut cfg = CFG::from_blocks(&builder.block_instrs, &builder.block_order);

@@ -6,4 +6,5 @@ pub mod scanner;
 pub mod ssa;
 pub mod type_checker;
 pub mod types;
+pub mod assembly;
 
