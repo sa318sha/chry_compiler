@@ -23,30 +23,37 @@ The project is designed as both a learning exercise in compiler construction and
 
 The compiler is built as a series of lowering and analysis passes:
 
-1. **Parsing**
+
+1. **Scanning**
+   - Basic Scanner for matching keywords
+   - Produces token stream for parsing
+2. **Parsing**
    - Recursive descent parser for expressions and statements
    - Produces a typed AST
 
-2. **HIR (High-level IR)**
+3. **Type Checking**
+   - Variable Definition checking and proper statemnets and expression checking"
+  
+4. **HIR (High-level IR)**
    - Structured instructions (`StoreVar`, `Return`, `If`, etc.)
    - Maintains type annotations
 
-3. **SSA (Static Single Assignment)**
+5. **SSA (Static Single Assignment)**
    - Variable renaming into SSA form
    - Phi insertion via dominance frontiers (Cytron et al. 1989 algorithm)
    - Dominator tree construction (Lengauer-Tarjan)
 
-4. **LIR (Low-level IR)**
+6. **LIR (Low-level IR)**
    - SSA is lowered into a flat sequence of virtual register operations
    - Phi nodes are eliminated into moves in predecessors
    - Supports live range analysis
 
-5. **Register Allocation**
+7. **Register Allocation**
    - Virtual registers → physical registers
    - Linear scan allocator (with future possibility of graph coloring)
    - Optional register coalescing
 
-6. **x86-64 Backend**
+8. **x86-64 Backend**
    - LIR lowered to assembly
    - Handles type sizes (`byte`, `word`, `dword`, `qword`)
    - Generates NASM-style output
