@@ -75,11 +75,17 @@ The compiler is built as a series of lowering and analysis passes:
 chry_compiler/
 
 hir/ # High-level IR definitions and lowering
+
 ssa/ # SSA representation, dominators, phi insertion
+
 lir/ # Low-level IR, virtual registers, lowering
+
 types/ # Core type system, tokens, labels
+
 parser/ # Scanner and parser for source language
+
 tests/ # Integration tests for HIR, SSA, LIR, backend
+
 main.rs # Entry point
 
 
